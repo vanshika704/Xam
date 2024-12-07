@@ -1,178 +1,114 @@
-// import { IncomingForm } from 'formidable';  // For handling file uploads
-// import { createClient } from '@supabase/supabase-js';  // For Supabase interaction
-// import openai from 'openai';  // For using OpenAI API for summarization
-// import googleTTS from 'google-tts-api';  // For generating audio
-// import dotenv from "dotenv"
-// dotenv.config();
+const express = require('express');
+const cors = require('cors');
+const multer = require('multer');
+const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
 
-// // Supabase client setup
-// const supabaseUrl = process.env.SUPABASE_ID;
-// const supabaseKey = process.env.SUPABASE_API;
-// const supabase = createClient(supabaseUrl, supabaseKey);
-
-
-// // OpenAI API setup (use your API key)
-// const openaiAPIKey = process.env.OPEN_AI;
-// openai.apiKey = openaiAPIKey;
-
-// // Disable bodyParser to handle the file upload manually in Vercel
-// export const config = {
-//   api: {
-//     bodyParser: false,
-//   },
-// };
-
-// // Function to handle file upload, summarization, and audio generation
-// const uploadHandler = async (req, res) => {
-//   const form = new IncomingForm();
-
-//   form.parse(req, async (err, fields, files) => {
-//     if (err) {
-//       return res.status(500).json({ error: 'File upload error.' });
-//     }
-
-//     // Get the file from the request
-//     const file = files.file[0];
-//     const filePath = file.filepath;
-
-//     // Step 1: Upload file to Supabase storage
-//     const { data, error } = await supabase.storage
-//       .from('uploads')
-//       .upload(`public/${file.originalFilename}`, file.filepath);
-
-//     if (error) {
-//       return res.status(500).json({ error: 'File upload to Supabase failed.' });
-//     }
-
-//     // Step 2: Generate a summary using OpenAI API
-//     const summary = await generateSummary(filePath);  // File content passed here
-
-//     // Step 3: Generate an audio file from the summary text using Google Text-to-Speech
-//     const audioUrl = await generateAudio(summary);
-
-//     // Return the summary and audio URL
-//     return res.status(200).json({
-//       summary: summary,
-//       audioUrl: audioUrl,
-//     });
-//   });
-// };
-
-// export default uploadHandler;
-
-// // Function to generate summary using OpenAI GPT-3
-// const generateSummary = async (filePath) => {
-//   // Load file content and create summary prompt
-//   // This could be reading the file content, extracting text from PDF, or any other format
-//   const fileContent = 'Extracted file content here...';  // Use a method to read the file's content
-  
-//   try {
-//     const completion = await openai.completions.create({
-//       model: 'text-davinci-003',  // GPT-3 model for text generation
-//       prompt: `Summarize the following text:\n\n${fileContent}`,
-//       max_tokens: 200,
-//     });
-    
-//     return completion.choices[0].text.trim();  // Return the summary
-//   } catch (error) {
-//     console.error('Error generating summary:', error);
-//     return 'Failed to generate summary';
-//   }
-// };
-
-// // Function to convert text to speech using Google TTS
-// const generateAudio = async (text) => {
-//   const url = googleTTS.getAudioUrl(text, {
-//     lang: 'en',
-//     slow: false,
-//     host: 'https://translate.google.com',
-//   });
-
-//   return url;  // Google TTS returns a URL for the audio file
-// };
-import { IncomingForm } from 'formidable';  // For handling file uploads
-import { createClient } from '@supabase/supabase-js';  // For Supabase interaction
-import openai from 'openai';  // For using OpenAI API for summarization
-import googleTTS from 'google-tts-api';  // For generating audio
-
-// Supabase client setup
-const supabaseUrl = 'https://<your-project-id>.supabase.co';  // Replace with your Supabase URL
-const supabaseKey = '<your-api-key>';  // Replace with your Supabase API key
+// Initialize the Supabase client
+const supabaseUrl = process.env.SUPABASE_ID; // Replace with your Supabase URL
+const supabaseKey = process.env.SUPABASE_API; // Replace with your Supabase service role key
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// OpenAI API setup (use your API key)
-const openaiAPIKey = '<your-openai-api-key>';
-openai.apiKey = openaiAPIKey;
+// Create an instance of Express
+const app = express();
 
-// Disable bodyParser to handle the file upload manually in Vercel
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// Enable CORS for the frontend (adjust if needed)
+app.use(cors({
+  origin: 'http://localhost:5173', // React app's URL (adjust if different)
+}));
 
-// Function to handle file upload, summarization, and audio generation
-const uploadHandler = async (req, res) => {
-  const form = new IncomingForm();
+// Multer setup for file upload
+const storage = multer.memoryStorage(); // Store files in memory temporarily
+const upload = multer({ storage: storage });
 
-  form.parse(req, async (err, fields, files) => {
-    if (err) {
-      return res.status(500).json({ error: 'File upload error.' });
-    }
+// Upload file route to Supabase Storage
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
 
-    const file = files.file[0];
-    const filePath = file.filepath;
+  try {
+    const file = req.file;
+    const { originalname, buffer } = file;
+    const fileExtension = path.extname(originalname).toLowerCase();
+    const fileName = Date.now() + fileExtension; // Ensure unique filenames
 
-    // Step 1: Upload file to Supabase storage
-    const { data, error } = await supabase.storage
-      .from('uploads')
-      .upload(`public/${file.originalFilename}`, file.filepath);
+    // Upload file to Supabase Storage (replace 'your-bucket-name' with your actual bucket)
+    const { data, error } = await supabase
+      .storage
+      .from('your-bucket-name') // Replace with your Supabase storage bucket name
+      .upload(fileName, buffer, {
+        contentType: file.mimetype,
+        upsert: true, // Set to true if you want to overwrite existing files with the same name
+      });
 
     if (error) {
-      return res.status(500).json({ error: 'File upload to Supabase failed.' });
+      throw new Error(error.message);
     }
 
-    // Step 2: Generate a summary using OpenAI API
-    const summary = await generateSummary(filePath);
+    // Return the public URL of the uploaded file
+    const publicUrl = supabase
+      .storage
+      .from('uploads')
+      .getPublicUrl(fileName).publicURL;
 
-    // Step 3: Generate an audio file from the summary text using Google Text-to-Speech
-    const audioUrl = await generateAudio(summary);
-
-    return res.status(200).json({
-      summary: summary,
-      audioUrl: audioUrl,
+    res.json({
+      message: 'File uploaded successfully',
+      fileUrl: publicUrl, // URL of the uploaded file
     });
-  });
-};
 
-export default uploadHandler;
-
-// Function to generate summary using OpenAI GPT-3
-const generateSummary = async (filePath) => {
-  // Load file content (you may need additional logic to read PDF, .txt, etc.)
-  const fileContent = 'Extracted file content here...';  // Placeholder, replace with actual file extraction logic
-  
-  try {
-    const completion = await openai.completions.create({
-      model: 'text-davinci-003',  // GPT-3 model for text generation
-      prompt: `Summarize the following text:\n\n${fileContent}`,
-      max_tokens: 200,
-    });
-    
-    return completion.choices[0].text.trim();  // Return the summary
   } catch (error) {
-    console.error('Error generating summary:', error);
-    return 'Failed to generate summary';
+    console.error(error);
+    res.status(500).json({ error: 'Error uploading file to Supabase' });
   }
-};
+});
 
-// Function to convert text to speech using Google TTS
-const generateAudio = async (text) => {
-  const url = googleTTS.getAudioUrl(text, {
-    lang: 'en',
-    slow: false,
-    host: 'https://translate.google.com',
+// Text summarization route (You can use any text summarization API here)
+app.post('/api/summarize', express.json(), async (req, res) => {
+  const { text } = req.body;
+
+  // Your logic for summarizing the text (e.g., integrating with OpenAI, GPT-3, etc.)
+  // For now, just a placeholder summarizer
+  if (!text) {
+    return res.status(400).json({ error: 'No text provided' });
+  }
+
+  const summary = text.split('. ').slice(0, 2).join('. ') + '.';
+
+  res.json({
+    message: 'Text summarized successfully',
+    summary: summary,
   });
+});
 
-  return url;  // Google TTS returns a URL for the audio file
-};
+// Convert file to text (using a package like `pdf-parse` for PDFs, or `textract` for DOCX files)
+const pdfParse = require('pdf-parse');
+
+app.post('/api/convert-to-text', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  const file = req.file;
+  const { buffer, mimetype } = file;
+
+  try {
+    if (mimetype === 'application/pdf') {
+      const pdfData = await pdfParse(buffer);
+      res.json({
+        message: 'PDF converted to text successfully',
+        text: pdfData.text, // Extracted text from the PDF
+      });
+    } else {
+      return res.status(400).json({ error: 'Unsupported file type' });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error converting file to text' });
+  }
+});
+
+// Start the server
+app.listen(3000, () => {
+  console.log('Server running on http://localhost:3000');
+});
